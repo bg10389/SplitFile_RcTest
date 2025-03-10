@@ -16,31 +16,34 @@ void setupVesc() {
 
 /////////////////////////////////////////////////////////////////////////////////////
 // VESC Current Control (using SBUS channel 1) WITH REVERSE
-// SBUS range: ~350..1700, neutral ~990, deadband ±20.
-// If above (neutral+deadband), forward current up to MAX_CURRENT.
-// If below (neutral-deadband), reverse current down to -MAX_CURRENT.
+// SBUS range: ~350..1700, neutral ~990, deadband ±10.
+// If above (neutral+deadband), forward current up to safeMaxCurrent.
+// If below (neutral-deadband), reverse current down to -safeMaxCurrent.
 // Otherwise, coast at 0 A.
 /////////////////////////////////////////////////////////////////////////////////////
 void updateVescControl() {
     // VESC current control uses SBUS channel 1.
     int ch_vesc = channels[1];
-    const int neutral = 990;  // throttle value at zero position
-    const int deadband = 20;  // +/- deadband around neutral
+    const int neutral = 990;  // Throttle value at zero position.
+    const int deadband = 10;  // Use ±10 counts deadband.
+    
+    // Use a local safe current limit for VESC control.
+    const float safeMaxCurrent = 10.0f;
     
     float currentCommand = 0.0f;
     
     if (ch_vesc > (neutral + deadband)) {
+        // Forward throttle: map from (neutral+deadband) up to 1700.
         float forwardRange = (1700.0f - (neutral + deadband));
         currentCommand = (float)(ch_vesc - (neutral + deadband)) / forwardRange;
-        if (currentCommand < 0.0f) currentCommand = 0.0f;
-        if (currentCommand > 1.0f) currentCommand = 1.0f;
-        currentCommand *= MAX_CURRENT;
+        currentCommand = constrain(currentCommand, 0.0f, 1.0f);
+        currentCommand *= safeMaxCurrent;
     } else if (ch_vesc < (neutral - deadband)) {
+        // Reverse throttle: map from (neutral-deadband) down to 350.
         float reverseRange = (float)((neutral - deadband) - 350);
         float proportion = (float)((neutral - deadband) - ch_vesc) / reverseRange;
-        if (proportion < 0.0f) proportion = 0.0f;
-        if (proportion > 1.0f) proportion = 1.0f;
-        currentCommand = -proportion * MAX_CURRENT;
+        proportion = constrain(proportion, 0.0f, 1.0f);
+        currentCommand = -proportion * safeMaxCurrent;
     } else {
         // Within deadband, coast.
         currentCommand = 0.0f;
